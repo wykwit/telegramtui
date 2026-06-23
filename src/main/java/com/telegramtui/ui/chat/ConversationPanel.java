@@ -52,6 +52,8 @@ public class ConversationPanel {
         boolean isNew = tabBar.openChat(chat);
         if (isNew) {
             messageService.loadMessages(chat.id());
+        } else {
+            messageService.markMessagesViewed(chat.id());
         }
     }
 

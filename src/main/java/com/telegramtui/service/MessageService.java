@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +35,7 @@ public class MessageService {
 
     private final ConcurrentHashMap<Long, List<MessageModel>> messageCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, AtomicInteger> retryCount = new ConcurrentHashMap<>();
+    private final Set<Long> openedChats = ConcurrentHashMap.newKeySet();
 
     public MessageService(TelegramClient client) {
         this.client = client;
@@ -41,12 +43,14 @@ public class MessageService {
     }
 
     public void loadMessages(long chatId) {
+        openedChats.add(chatId);
         retryCount.put(chatId, new AtomicInteger(0));
         client.send("{\"@type\":\"openChat\",\"chat_id\":" + chatId + "}",
                 resp -> fetchHistory(chatId));
     }
 
     public void loadMessagesAround(long chatId, long fromMessageId) {
+        openedChats.add(chatId);
         String req = "{\"@type\":\"getChatHistory\","
                 + "\"chat_id\":" + chatId + ","
                 + "\"from_message_id\":" + fromMessageId + ","
@@ -54,6 +58,26 @@ public class MessageService {
                 + "\"limit\":50,"
                 + "\"only_local\":false}";
         client.send(req, json -> handleHistory(chatId, json));
+    }
+
+    /**
+     * Informs TDLib that the newest message in the chat has been viewed, marking all earlier
+     * messages as read via {@code force_read}. Safe to call repeatedly — TDLib ignores messages
+     * that are already read.
+     */
+    public void markMessagesViewed(long chatId) {
+        List<MessageModel> msgs = messageCache.get(chatId);
+        if (msgs == null || msgs.isEmpty()) return;
+        long lastId;
+        synchronized (msgs) {
+            lastId = msgs.get(msgs.size() - 1).id();
+        }
+        String req = "{\"@type\":\"viewMessages\","
+                + "\"chat_id\":" + chatId + ","
+                + "\"message_thread_id\":0,"
+                + "\"message_ids\":[" + lastId + "],"
+                + "\"force_read\":true}";
+        client.send(req, null);
     }
 
     public List<MessageModel> getMessages(long chatId) {
@@ -199,6 +223,7 @@ public class MessageService {
         Collections.reverse(list);
         messageCache.put(chatId, Collections.synchronizedList(new ArrayList<>(list)));
         version.incrementAndGet();
+        markMessagesViewed(chatId);
 
         if (list.size() < HISTORY_LIMIT) {
             scheduleRetry(chatId);
@@ -230,6 +255,7 @@ public class MessageService {
         long chatId = msg.get("chat_id").getAsLong();
         MessageModel m = parser.parseMessage(msg);
         if (m == null) return;
+        boolean wasOpened = openedChats.contains(chatId);
         List<MessageModel> cached = messageCache.get(chatId);
         if (cached == null) {
             cached = Collections.synchronizedList(new ArrayList<>());
@@ -237,6 +263,9 @@ public class MessageService {
         }
         cached.add(m);
         version.incrementAndGet();
+        if (wasOpened && !m.isOutgoing()) {
+            markMessagesViewed(chatId);
+        }
     }
 
     private void handleMessageContent(JsonObject obj) {
