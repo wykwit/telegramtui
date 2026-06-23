@@ -15,6 +15,14 @@ public class FocusManager {
 	}
 
 	public boolean handleKey(KeyStroke key) {
+		if (key.getKeyType() == KeyType.ArrowLeft && focused == Panel.CHAT) {
+			focused = Panel.SIDEBAR;
+			return true;
+		}
+		if (key.getKeyType() == KeyType.ArrowRight && focused == Panel.SIDEBAR) {
+			focused = Panel.CHAT;
+			return true;
+		}
 		if (key.getKeyType() != KeyType.Character) {
 			return false;
 		}

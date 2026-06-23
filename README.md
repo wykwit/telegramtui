@@ -189,23 +189,23 @@ TelegramTUI uses vim-style navigation throughout. There are two modes:
 
 #### Movement
 
-| Key       | Action                                |
-|-----------|---------------------------------------|
-| `h`       | focus sidebar                         |
-| `l`       | focus chat                            |
-| `j` / `k` | move down / up                        |
-| `J` / `K` | jump 10 rows                          |
-| `G`       | jump to newest message                |
-| `Enter`   | open selected chat / deselect message |
+| Key         | Action                                |
+|-------------|---------------------------------------|
+| `h` / `l`   | focus sidebar / chat (← / →)          |
+| `j` / `k`   | move down / up (↑ / ↓)                |
+| `J` / `K`   | jump 10 rows                          |
+| `G`         | jump to newest message                |
+| `Enter`     | open selected chat / deselect message |
 
 #### Chat tabs
 
-| Key     | Action               |
-|---------|----------------------|
-| `Tab`   | next tab             |
-| `1`–`9` | switch to tab N      |
-| `x`     | close current tab    |
-| `X`     | close all other tabs |
+| Key       | Action               |
+|-----------|----------------------|
+| `H` / `L` | previous / next tab  |
+| `Tab`     | next tab             |
+| `1`–`9`   | switch to tab N      |
+| `x`       | close current tab    |
+| `X`       | close all other tabs |
 
 #### Messages
 
@@ -217,6 +217,18 @@ TelegramTUI uses vim-style navigation throughout. There are two modes:
 | `r`   | reply to selected message   |
 | `o`   | open attachment             |
 | `Esc` | exit insert mode / deselect |
+
+#### Insert mode (line editing)
+
+| Key           | Action                       |
+|---------------|------------------------------|
+| `←` / `→`     | move cursor                  |
+| `Home` / `End`| cursor to start / end        |
+| `Ctrl-A` / `Ctrl-E` | cursor to start / end  |
+| `Ctrl-K`      | delete to end of line        |
+| `Ctrl-U`      | delete to start of line      |
+| `Ctrl-W`      | delete previous word         |
+| `Enter`       | send message / apply edit    |
 
 #### View
 

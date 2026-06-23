@@ -113,6 +113,9 @@ public class SidebarPanel {
 			}
 			return true;
 		}
+		// arrow keys mirror j/k
+		if (key.getKeyType() == KeyType.ArrowDown) { moveBy(1); return true; }
+		if (key.getKeyType() == KeyType.ArrowUp) { moveBy(-1); return true; }
 		if (key.getKeyType() != KeyType.Character) return false;
 		char c = key.getCharacter();
 
@@ -136,16 +139,17 @@ public class SidebarPanel {
 			return false;
 		}
 
-		if (c == 'j') {
-			List<ChatModel> chats = chatService.getChatsForList(selectedFolderId);
-			if (selectedIndex < chats.size() - 1) selectedIndex++;
-			return true;
-		}
-		if (c == 'k') {
-			if (selectedIndex > 0) selectedIndex--;
-			return true;
-		}
+		if (c == 'j') { moveBy(1); return true; }
+		if (c == 'k') { moveBy(-1); return true; }
+		if (c == 'J') { moveBy(10); return true; }
+		if (c == 'K') { moveBy(-10); return true; }
 		return false;
+	}
+
+	private void moveBy(int delta) {
+		List<ChatModel> chats = chatService.getChatsForList(selectedFolderId);
+		if (chats.isEmpty()) return;
+		selectedIndex = Math.max(0, Math.min(chats.size() - 1, selectedIndex + delta));
 	}
 
 	private void renderTabs(TextGraphics g, int x, int y, int maxWidth) {

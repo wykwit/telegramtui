@@ -170,26 +170,22 @@ public class ConversationPanel {
             return true;
         }
 
+        // arrow keys mirror j/k message navigation
+        if (key.getKeyType() == KeyType.ArrowDown) { moveSelection(chat, 1); return true; }
+        if (key.getKeyType() == KeyType.ArrowUp) { moveSelection(chat, -1); return true; }
+
         if (key.getKeyType() == KeyType.Character) {
             char c = key.getCharacter();
 
             // j/k navigate messages, J/K jump by 10
-            if (c == 'j' || c == 'k' || c == 'J' || c == 'K') {
-                if (chat != null) {
-                    List<MessageModel> msgs = messageService.getMessages(chat.id());
-                    if (!msgs.isEmpty()) {
-                        if (selectedMsgIndex < 0) {
-                            selectedMsgIndex = msgs.size() - 1;
-                        } else {
-                            if (c == 'j') selectedMsgIndex = Math.min(msgs.size() - 1, selectedMsgIndex + 1);
-                            else if (c == 'k') selectedMsgIndex = Math.max(0, selectedMsgIndex - 1);
-                            else if (c == 'J') selectedMsgIndex = Math.min(msgs.size() - 1, selectedMsgIndex + 10);
-                            else selectedMsgIndex = Math.max(0, selectedMsgIndex - 10);
-                        }
-                    }
-                }
-                return true;
-            }
+            if (c == 'j') { moveSelection(chat, 1); return true; }
+            if (c == 'k') { moveSelection(chat, -1); return true; }
+            if (c == 'J') { moveSelection(chat, 10); return true; }
+            if (c == 'K') { moveSelection(chat, -10); return true; }
+
+            // H/L cycle chat tabs (prev/next) — complements 1-5 and Tab
+            if (c == 'H') { tabBar.switchToPrevTab(); return true; }
+            if (c == 'L') { tabBar.switchToNextTab(); return true; }
 
             if (c == 'i') {
                 inputBuffer.startInsert();
@@ -209,12 +205,18 @@ public class ConversationPanel {
                 return true;
             }
 
-            // edit only works on your own messages
+            // edit only works on your own plain-text messages
             if (c == 'e' && selectedMsgIndex >= 0 && chat != null) {
                 List<MessageModel> msgs = messageService.getMessages(chat.id());
                 if (selectedMsgIndex < msgs.size()) {
                     MessageModel m = msgs.get(selectedMsgIndex);
-                    if (m.isOutgoing()) inputBuffer.startEdit(m);
+                    if (!m.isOutgoing()) {
+                        flashStatus("Can't edit — not your message");
+                    } else if (!isEditable(m)) {
+                        flashStatus("Can't edit this message type");
+                    } else {
+                        inputBuffer.startEdit(m);
+                    }
                 }
                 return true;
             }
@@ -286,6 +288,30 @@ public class ConversationPanel {
         }
 
         return false;
+    }
+
+    // moves the message selection by delta rows, clamped to the message list; when nothing is
+    // selected, the first move lands on the newest message (end of the list)
+    private void moveSelection(ChatModel chat, int delta) {
+        if (chat == null) return;
+        List<MessageModel> msgs = messageService.getMessages(chat.id());
+        if (msgs.isEmpty()) return;
+        if (selectedMsgIndex < 0) {
+            selectedMsgIndex = msgs.size() - 1;
+            if (delta < 0) return;
+        }
+        selectedMsgIndex = Math.max(0, Math.min(msgs.size() - 1, selectedMsgIndex + delta));
+    }
+
+    // shows a transient status message in the input hint area (~3s)
+    private void flashStatus(String msg) {
+        actionStatus = msg;
+        actionStatusAt = System.currentTimeMillis();
+    }
+
+    // only plain-text (and unknown-typed) messages can be edited via editMessageText
+    private static boolean isEditable(MessageModel m) {
+        return "messageText".equals(m.contentType()) || "unknown".equals(m.contentType());
     }
 
     public void render(TextGraphics g, Box box) {

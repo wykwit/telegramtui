@@ -132,7 +132,11 @@ public class MessageService {
         req.addProperty("message_id", messageId);
         req.add("input_message_content", content);
 
-        client.send(req.toString(), null);
+        client.send(req.toString(), response -> {
+            if (response.contains("\"@type\":\"error\"")) {
+                log.warn("editMessageText failed (chat={} msg={}): {}", chatId, messageId, response);
+            }
+        });
     }
 
     public void sendMessage(long chatId, String text) {

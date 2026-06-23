@@ -56,6 +56,11 @@ public class ChatTabBar {
         activeTabIndex = (activeTabIndex + 1) % tabs.size();
     }
 
+    public void switchToPrevTab() {
+        if (tabs.isEmpty()) return;
+        activeTabIndex = (activeTabIndex - 1 + tabs.size()) % tabs.size();
+    }
+
     public ChatModel activeChat() {
         if (activeTabIndex < 0 || activeTabIndex >= tabs.size()) return null;
         return tabs.get(activeTabIndex);
