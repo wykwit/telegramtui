@@ -17,6 +17,7 @@ public class MessageInputBuffer {
 
     private final MessageService messageService;
     private final StringBuilder buffer = new StringBuilder();
+    private int cursor = 0;
 
     private boolean insertMode = false;
     private long editingMessageId = 0;
@@ -42,11 +43,14 @@ public class MessageInputBuffer {
     }
 
     public String getModeHint() {
-        if (insertMode) return "-- INSERT --";
+        if (insertMode) {
+            return editingMessageId > 0 ? "-- EDIT --" : "-- INSERT --";
+        }
         return "";
     }
 
     public void startInsert() {
+        cursor = buffer.length();
         insertMode = true;
     }
 
@@ -54,6 +58,7 @@ public class MessageInputBuffer {
         editingMessageId = m.id();
         buffer.setLength(0);
         buffer.append(m.text());
+        cursor = buffer.length();
         insertMode = true;
     }
 
@@ -61,6 +66,7 @@ public class MessageInputBuffer {
         replyToMessageId = m.id();
         replyToSenderName = m.isOutgoing() ? "You" : m.senderName();
         replyToText = m.text();
+        cursor = buffer.length();
         insertMode = true;
     }
 
@@ -76,6 +82,7 @@ public class MessageInputBuffer {
                 editingMessageId = 0;
                 buffer.setLength(0);
             }
+            cursor = 0;
             return Result.CANCELLED;
         }
         if (key.getKeyType() == KeyType.Enter) {
@@ -90,22 +97,75 @@ public class MessageInputBuffer {
                     replyToSenderName = "";
                     replyToText = "";
                     buffer.setLength(0);
+                    cursor = 0;
                     return Result.SENT;
                 }
             }
             buffer.setLength(0);
+            cursor = 0;
             insertMode = false;
             return Result.SENT;
         }
         if (key.getKeyType() == KeyType.Backspace) {
-            if (!buffer.isEmpty()) buffer.deleteCharAt(buffer.length() - 1);
+            if (cursor > 0) {
+                buffer.deleteCharAt(cursor - 1);
+                cursor--;
+            }
+            return Result.CONSUMED;
+        }
+        if (key.getKeyType() == KeyType.Delete) {
+            if (cursor < buffer.length()) buffer.deleteCharAt(cursor);
+            return Result.CONSUMED;
+        }
+        if (key.getKeyType() == KeyType.ArrowLeft) {
+            if (cursor > 0) cursor--;
+            return Result.CONSUMED;
+        }
+        if (key.getKeyType() == KeyType.ArrowRight) {
+            if (cursor < buffer.length()) cursor++;
+            return Result.CONSUMED;
+        }
+        // single-line editor: vertical arrows are a no-op (reserved for message history later)
+        if (key.getKeyType() == KeyType.ArrowUp || key.getKeyType() == KeyType.ArrowDown) {
+            return Result.CONSUMED;
+        }
+        if (key.getKeyType() == KeyType.Home) {
+            cursor = 0;
+            return Result.CONSUMED;
+        }
+        if (key.getKeyType() == KeyType.End) {
+            cursor = buffer.length();
             return Result.CONSUMED;
         }
         if (key.getKeyType() == KeyType.Character) {
-            buffer.append(key.getCharacter());
+            char c = key.getCharacter();
+            if (key.isCtrlDown()) {
+                switch (c) {
+                    case 'a' -> { cursor = 0; return Result.CONSUMED; }
+                    case 'e' -> { cursor = buffer.length(); return Result.CONSUMED; }
+                    case 'k' -> { buffer.delete(cursor, buffer.length()); return Result.CONSUMED; }
+                    case 'u' -> { buffer.delete(0, cursor); cursor = 0; return Result.CONSUMED; }
+                    case 'w' -> { deletePrevWord(); return Result.CONSUMED; }
+                    default -> { return Result.CONSUMED; }
+                }
+            }
+            buffer.insert(cursor, c);
+            cursor++;
             return Result.CONSUMED;
         }
         return Result.CONSUMED;
+    }
+
+    // deletes the word (and any trailing whitespace) before the cursor — readline Ctrl-W
+    private void deletePrevWord() {
+        int end = cursor;
+        int start = end;
+        while (start > 0 && Character.isWhitespace(buffer.charAt(start - 1))) start--;
+        while (start > 0 && !Character.isWhitespace(buffer.charAt(start - 1))) start--;
+        if (start < end) {
+            buffer.delete(start, end);
+            cursor = start;
+        }
     }
 
     public boolean handleDeleteConfirmation(KeyStroke key, ChatModel chat,
@@ -145,16 +205,45 @@ public class MessageInputBuffer {
         if (deletePending) {
             g.setForegroundColor(CatppuccinMocha.RED);
             g.putString(x, y, TextRenderer.padRight("Delete this message? (y / n)", w));
-        } else if (hintText != null) {
+            return;
+        }
+        if (hintText != null) {
             g.setForegroundColor(CatppuccinMocha.OVERLAY2);
             g.putString(x, y, TextRenderer.padRight("  " + hintText, w));
-        } else {
-            g.setForegroundColor(CatppuccinMocha.TEXT);
-            for (int li = 0; li < inputHeight; li++) {
-                String lineText = li < inputLines.size() ? inputLines.get(li) : "";
-                String prefix = (li == 0) ? "❯ " : "  ";
-                String cursor = (insertMode && li == inputHeight - 1) ? "│" : "";
-                g.putString(x, y + li, TextRenderer.padRight(prefix + lineText + cursor, w));
+            return;
+        }
+
+        // wrap width matches ConversationPanel's inputWrapWidth (w - 3): 2-char prefix + 1 margin
+        int wrapW = Math.max(1, w - 3);
+        int cursorLine = wrapW > 0 ? cursor / wrapW : 0;
+        int cursorCol = wrapW > 0 ? cursor % wrapW : 0;
+
+        // keep the cursor on screen when the text overflows the visible window
+        int firstVisible = (cursorLine >= inputHeight) ? cursorLine - inputHeight + 1 : 0;
+
+        g.setForegroundColor(CatppuccinMocha.TEXT);
+        for (int vi = 0; vi < inputHeight; vi++) {
+            int actual = firstVisible + vi;
+            String lineText = actual < inputLines.size() ? inputLines.get(actual) : "";
+            String prefix = (actual == 0) ? "❯ " : "  ";
+            g.putString(x, y + vi, TextRenderer.padRight(prefix + lineText, w));
+        }
+
+        // block cursor: invert the cell under the cursor, or a solid block at end-of-line
+        if (insertMode && inputHeight > 0) {
+            int vi = cursorLine - firstVisible;
+            if (vi >= 0 && vi < inputHeight) {
+                String lineText = cursorLine < inputLines.size() ? inputLines.get(cursorLine) : "";
+                int cursorX = x + 2 + cursorCol;
+                if (cursorX < x + w) {
+                    g.setBackgroundColor(CatppuccinMocha.TEXT);
+                    g.setForegroundColor(CatppuccinMocha.BASE);
+                    if (cursorCol < lineText.length()) {
+                        g.putString(cursorX, y + vi, String.valueOf(lineText.charAt(cursorCol)));
+                    } else {
+                        g.putString(cursorX, y + vi, " ");
+                    }
+                }
             }
         }
     }
