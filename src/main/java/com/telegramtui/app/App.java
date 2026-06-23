@@ -4,6 +4,7 @@ import com.telegramtui.service.ChatService;
 import com.telegramtui.service.FileService;
 import com.telegramtui.service.FolderService;
 import com.telegramtui.service.MessageService;
+import com.telegramtui.service.StickerService;
 import com.telegramtui.telegram.NativeLibLoader;
 import com.telegramtui.telegram.TelegramClient;
 import com.telegramtui.ui.layout.AuthScreen;
@@ -20,6 +21,7 @@ public class App {
 		FolderService folderService = new FolderService(telegramClient);
 		MessageService messageService = new MessageService(telegramClient);
 		FileService fileService = new FileService(telegramClient);
+		StickerService stickerService = new StickerService(telegramClient, fileService);
 		telegramClient.getUpdateHandler().setMessageService(messageService);
 		telegramClient.getUpdateHandler().setChatService(chatService);
 		telegramClient.getUpdateHandler().setFolderService(folderService);
@@ -30,7 +32,8 @@ public class App {
 
 		new AuthScreen(telegramClient).start();
 		chatService.start();
-		new MainScreen(telegramClient, chatService, folderService, messageService, fileService).start();
+		new MainScreen(telegramClient, chatService, folderService, messageService, fileService,
+				stickerService, config.inlineImagesEnabled()).start();
 
 		try {
 			Runtime.getRuntime().removeShutdownHook(shutdownHook);

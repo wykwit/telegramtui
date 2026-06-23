@@ -8,8 +8,10 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 public class FileService {
@@ -17,7 +19,17 @@ public class FileService {
     private static final Logger log = LoggerFactory.getLogger(FileService.class);
 
     private final TelegramClient client;
-    private final Map<Long, Consumer<String>> downloads = new ConcurrentHashMap<>();
+    private final Map<Long, Download> downloads = new ConcurrentHashMap<>();
+
+    private static final class Download {
+        final boolean moveToDownloads;
+        final List<Consumer<String>> callbacks = new CopyOnWriteArrayList<>();
+
+        Download(boolean moveToDownloads, Consumer<String> first) {
+            this.moveToDownloads = moveToDownloads;
+            this.callbacks.add(first);
+        }
+    }
 
     public FileService(TelegramClient client) {
         this.client = client;
@@ -32,7 +44,31 @@ public class FileService {
             log.warn("downloadFile called with invalid fileId={}", fileId);
             return;
         }
-        downloads.put(fileId, onComplete);
+        addCallback(fileId, true, onComplete);
+    }
+
+    /**
+     * Downloads a TDLib file and reports its on-disk path <b>without</b> moving it to ~/Downloads.
+     * Used for sticker thumbnails that must stay in TDLib's own cache.
+     */
+    public void downloadFileInPlace(long fileId, Consumer<String> onComplete) {
+        if (fileId <= 0) {
+            log.warn("downloadFileInPlace called with invalid fileId={}", fileId);
+            return;
+        }
+        addCallback(fileId, false, onComplete);
+    }
+
+    private void addCallback(long fileId, boolean moveToDownloads, Consumer<String> onComplete) {
+        Download existing = downloads.putIfAbsent(fileId, new Download(moveToDownloads, onComplete));
+        if (existing != null) {
+            existing.callbacks.add(onComplete);
+        } else {
+            sendDownload(fileId);
+        }
+    }
+
+    private void sendDownload(long fileId) {
         client.send(
                 "{\"@type\":\"downloadFile\",\"file_id\":" + fileId
                         + ",\"priority\":1,\"synchronous\":false}",
@@ -45,8 +81,7 @@ public class FileService {
                     }
                     String path = extractLocalPathFromJson(result);
                     if (!path.isEmpty() && result.contains("\"is_downloading_completed\":true")) {
-                        Consumer<String> cb = downloads.remove(fileId);
-                        if (cb != null) cb.accept(moveToDownloads(path));
+                        complete(fileId, path);
                     }
                 });
     }
@@ -54,14 +89,18 @@ public class FileService {
     public void onUpdateFile(String json) {
         long fileId = extractFileIdFromUpdate(json);
         if (fileId <= 0) return;
-        Consumer<String> cb = downloads.get(fileId);
-        if (cb == null) return;
-        if (json.contains("\"is_downloading_completed\":true")) {
-            String path = extractLocalPathFromJson(json);
-            if (!path.isEmpty()) {
-                downloads.remove(fileId);
-                cb.accept(moveToDownloads(path));
-            }
+        if (!json.contains("\"is_downloading_completed\":true")) return;
+        String path = extractLocalPathFromJson(json);
+        if (path.isEmpty()) return;
+        complete(fileId, path);
+    }
+
+    private void complete(long fileId, String tdlibPath) {
+        Download d = downloads.remove(fileId);
+        if (d == null) return;
+        String result = d.moveToDownloads ? moveToDownloads(tdlibPath) : tdlibPath;
+        for (Consumer<String> cb : d.callbacks) {
+            cb.accept(result);
         }
     }
 

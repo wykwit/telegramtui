@@ -56,6 +56,9 @@ public class MessageParser {
         String forwardedFrom = extractForwardedFrom(msg);
         List<String> urls = extractUrls(content, contentType);
 
+        long stickerFileId = parseStickerThumbnailFileId(content, contentType);
+        String stickerEmoji = parseStickerEmoji(content, contentType);
+
         return new MessageModel(id, chatId, senderId, senderName,
                 extractText(content),
                 contentType,
@@ -63,7 +66,8 @@ public class MessageParser {
                 localFilePath,
                 forwardedFrom,
                 urls,
-                date, isOutgoing, isEdited, replyToId);
+                date, isOutgoing, isEdited, replyToId,
+                stickerFileId, stickerEmoji);
     }
 
     public String extractText(JsonObject content) {
@@ -140,7 +144,10 @@ public class MessageParser {
                 yield caption.isEmpty() ? result : result + "\n" + caption;
             }
             case "messageSticker" -> {
-                JsonObject sticker = content.getAsJsonObject("sticker");
+                JsonObject sticker = null;
+                if (content.has("sticker") && content.get("sticker").isJsonObject()) {
+                    sticker = content.getAsJsonObject("sticker");
+                }
                 String emoji = (sticker != null && sticker.has("emoji"))
                         ? sticker.get("emoji").getAsString() : "?";
                 yield "[Sticker: " + emoji + "]";
@@ -212,6 +219,38 @@ public class MessageParser {
             return textObj.has("text") ? textObj.get("text").getAsString() : "?";
         }
         return "?";
+    }
+
+    // TDLib sticker object: content.sticker.{width,height,emoji,thumbnail.file}
+    private JsonObject stickerObject(JsonObject content, String type) {
+        if (!"messageSticker".equals(type) || content == null) return null;
+        if (!content.has("sticker") || !content.get("sticker").isJsonObject()) return null;
+        JsonObject sticker = content.getAsJsonObject("sticker");
+        return sticker != null && !sticker.isJsonNull() ? sticker : null;
+    }
+
+    private long parseStickerThumbnailFileId(JsonObject content, String type) {
+        try {
+            JsonObject sticker = stickerObject(content, type);
+            if (sticker == null) return 0;
+            JsonObject thumb = sticker.getAsJsonObject("thumbnail");
+            if (thumb == null || thumb.isJsonNull()) return 0;
+            JsonObject file = thumb.getAsJsonObject("file");
+            if (file == null || !file.has("id")) return 0;
+            return file.get("id").getAsLong();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private String parseStickerEmoji(JsonObject content, String type) {
+        try {
+            JsonObject sticker = stickerObject(content, type);
+            if (sticker == null || !sticker.has("emoji")) return "";
+            return sticker.get("emoji").getAsString();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private long parseFileId(JsonObject content, String type) {

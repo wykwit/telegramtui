@@ -67,6 +67,25 @@ immediately — no manual path copying.
     - Ubuntu 24.10+ / Debian: `sudo apt install libtd-dev`
     - Ubuntu 24.04 LTS: use `install-full.sh` below (builds from source)
     - Other: [build from source](https://github.com/tdlib/td#building)
+- **ffmpeg** *(optional)* — only needed for inline sticker images (see [Inline sticker images](#inline-sticker-images))
+
+## Inline sticker images
+
+Stickers can be rendered inline as actual images in terminals that support the
+[Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/) — **Ghostty**, **Kitty**,
+and **WezTerm**. The thumbnail is fetched from TDLib and transcoded to PNG via `ffmpeg`, so ffmpeg
+must be on your `PATH`.
+
+Enable it in `~/.telegramtui/config.properties`:
+
+```properties
+inline.images=auto
+```
+
+`auto` (the default) enables it when the terminal advertises support (`$TERM` / `$TERM_PROGRAM`).
+Set `on` to force-enable or `off` to disable. On unsupported terminals or when ffmpeg is missing,
+stickers fall back to the `[Sticker: 🐱]` text form. PNGs are cached under `~/.telegramtui/stickers/`.
+
 
 ## Install
 

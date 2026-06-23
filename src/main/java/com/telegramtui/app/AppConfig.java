@@ -5,9 +5,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 // Loads the API credentials from ~/.telegramtui/config.properties
 public class AppConfig {
@@ -18,6 +21,7 @@ public class AppConfig {
 
 	private final int apiId;
 	private final String apiHash;
+	private final boolean inlineImagesEnabled;
 
 	public AppConfig() {
 		Properties props = new Properties();
@@ -47,6 +51,8 @@ public class AppConfig {
 			printSetupInstructions();
 			throw new IllegalStateException("api.id or api.hash not configured");
 		}
+
+		this.inlineImagesEnabled = resolveInlineImages(props);
 	}
 
 	private static void printSetupInstructions() {
@@ -67,5 +73,55 @@ public class AppConfig {
 
 	public String getApiHash() {
 		return apiHash;
+	}
+
+	/**
+	 * Resolved flag: inline sticker rendering is active only when explicitly enabled (or
+	 * auto-detected from the terminal) <em>and</em> {@code ffmpeg} is available on the PATH.
+	 */
+	public boolean inlineImagesEnabled() {
+		return inlineImagesEnabled;
+	}
+
+	// inline.images = auto|on|off. "auto" enables it only on terminals that support the Kitty
+	// graphics protocol (xterm-kitty / ghostty / WezTerm). Requires ffmpeg regardless.
+	private boolean resolveInlineImages(Properties props) {
+		String raw = props.getProperty("inline.images", "auto").trim().toLowerCase();
+		boolean requested = switch (raw) {
+			case "on", "true", "yes", "1" -> true;
+			case "off", "false", "no", "0" -> false;
+			default -> isKittyCapableTerm();
+		};
+		if (!requested) return false;
+		if (!isFfmpegOnPath()) {
+			log.warn("inline.images enabled but ffmpeg not found on PATH — disabling sticker images");
+			return false;
+		}
+		return true;
+	}
+
+	private static boolean isKittyCapableTerm() {
+		Map<String, String> env = System.getenv();
+		String term = env.getOrDefault("TERM", "");
+		String termProgram = env.getOrDefault("TERM_PROGRAM", "");
+		return "xterm-kitty".equals(term)
+				|| "ghostty".equals(term)
+				|| "ghostty".equals(termProgram)
+				|| "kitty".equals(termProgram)
+				|| "WezTerm".equals(termProgram);
+	}
+
+	private static boolean isFfmpegOnPath() {
+		try {
+			Process p = new ProcessBuilder("ffmpeg", "-version").redirectErrorStream(true).start();
+			p.getInputStream().transferTo(OutputStream.nullOutputStream());
+			if (!p.waitFor(5, TimeUnit.SECONDS)) {
+				p.destroyForcibly();
+				return false;
+			}
+			return p.exitValue() == 0;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 }

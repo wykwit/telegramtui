@@ -3,6 +3,7 @@ package com.telegramtui.ui.chat;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.telegramtui.model.ChatModel;
 import com.telegramtui.model.MessageModel;
+import com.telegramtui.model.StickerPlacement;
 import com.telegramtui.service.MessageService;
 import com.telegramtui.ui.common.CatppuccinMocha;
 
@@ -16,7 +17,8 @@ class ConversationRenderer {
 
     static int renderMessages(TextGraphics g, int x, int y, int w, int h,
                               ChatModel chat, int selectedMsgIndex, int viewportTop,
-                              MessageService messageService) {
+                              MessageService messageService, boolean imagesEnabled,
+                              List<StickerPlacement> placements) {
         g.setBackgroundColor(CatppuccinMocha.BASE);
         g.setForegroundColor(CatppuccinMocha.BASE);
         for (int r = 0; r < h; r++) {
@@ -41,7 +43,7 @@ class ConversationRenderer {
         List<List<MessageModel>> groups = MessageRenderer.groupBySender(messages);
         int[] heights = new int[groups.size()];
         for (int i = 0; i < groups.size(); i++) {
-            heights[i] = MessageRenderer.groupHeight(groups.get(i), w, isGroupChat, msgById);
+            heights[i] = MessageRenderer.groupHeight(groups.get(i), w, isGroupChat, msgById, imagesEnabled);
         }
 
         // cumulative heights help us figure out where each group starts
@@ -87,7 +89,7 @@ class ConversationRenderer {
             int panelRow = y + groupTop - viewportTop;
             MessageRenderer.renderGroup(g, groups.get(i), x, panelRow, w, isGroupChat,
                     i == selGroupIdx ? selPosInGroup : -1,
-                    y, y + h - 1, msgById);
+                    y, y + h - 1, msgById, imagesEnabled, placements);
         }
         return viewportTop;
     }

@@ -5,6 +5,7 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.telegramtui.model.ChatModel;
 import com.telegramtui.model.MessageModel;
+import com.telegramtui.model.StickerPlacement;
 import com.telegramtui.service.ChatService;
 import com.telegramtui.service.FileService;
 import com.telegramtui.service.MessageService;
@@ -12,6 +13,7 @@ import com.telegramtui.ui.common.Box;
 import com.telegramtui.ui.common.CatppuccinMocha;
 import com.telegramtui.ui.common.SystemOpen;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ConversationPanel {
@@ -19,8 +21,13 @@ public class ConversationPanel {
     private final MessageService messageService;
     private final ChatService chatService;
     private final FileService fileService;
+    private final boolean inlineImages;
     private final ChatTabBar tabBar = new ChatTabBar();
     private final MessageInputBuffer inputBuffer;
+
+    // sticker image placements for the most recent render, in absolute cell coordinates.
+    // Filled by the renderer, consumed by MainScreen to emit Kitty graphics after refresh.
+    private final List<StickerPlacement> stickerPlacements = new ArrayList<>();
 
     // -1 means no message selected (auto-scroll to bottom)
     private int selectedMsgIndex = -1;
@@ -37,10 +44,11 @@ public class ConversationPanel {
     private volatile long actionStatusAt = 0;
 
     public ConversationPanel(MessageService messageService, ChatService chatService,
-                             FileService fileService) {
+                             FileService fileService, boolean inlineImages) {
         this.messageService = messageService;
         this.chatService = chatService;
         this.fileService = fileService;
+        this.inlineImages = inlineImages;
         this.inputBuffer = new MessageInputBuffer(messageService);
     }
 
@@ -77,6 +85,25 @@ public class ConversationPanel {
 
     public boolean isInInsertMode() {
         return inputBuffer.isInInsertMode();
+    }
+
+    public boolean isInlineImages() {
+        return inlineImages;
+    }
+
+    public boolean isUrlPickerActive() {
+        return urlPickerActive;
+    }
+
+    /** Sticker placements recorded during the last render, in absolute terminal cell coordinates. */
+    public List<StickerPlacement> getStickerPlacements() {
+        return stickerPlacements;
+    }
+
+    /** The currently active chat id, or {@code -1} if none. Used to detect chat switches. */
+    public long getActiveChatId() {
+        ChatModel chat = tabBar.activeChat();
+        return chat != null ? chat.id() : -1;
     }
 
     public String getModeHint() {
@@ -266,6 +293,7 @@ public class ConversationPanel {
         tabBar.render(g, box);
         ChatModel chat = tabBar.activeChat();
         if (chat == null) {
+            stickerPlacements.clear();
             ConversationRenderer.renderPlaceholder(g, box.getInnerLeft(), box.getInnerTop(),
                     box.getInnerWidth(), box.getInnerHeight());
             return;
@@ -302,9 +330,11 @@ public class ConversationPanel {
 
         if (messageService.isLoading(chat.id())) {
             ConversationRenderer.renderLoading(g, x, messagesTop, w, messagesHeight);
+            stickerPlacements.clear();
         } else {
+            stickerPlacements.clear();
             viewportTop = ConversationRenderer.renderMessages(g, x, messagesTop, w, messagesHeight,
-                    chat, selectedMsgIndex, viewportTop, messageService);
+                    chat, selectedMsgIndex, viewportTop, messageService, inlineImages, stickerPlacements);
         }
 
         // url picker floats on top of everything else

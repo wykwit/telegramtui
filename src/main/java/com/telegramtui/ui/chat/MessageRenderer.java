@@ -3,6 +3,7 @@ package com.telegramtui.ui.chat;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.telegramtui.model.MessageModel;
+import com.telegramtui.model.StickerPlacement;
 import com.telegramtui.ui.common.CatppuccinMocha;
 import com.telegramtui.ui.common.TextRenderer;
 
@@ -13,6 +14,9 @@ import java.util.List;
 import java.util.Map;
 
 public class MessageRenderer {
+
+	/** Size of the inline sticker image, in terminal cells. Tunable. */
+	public static final int STICKER_ROWS = 6;
 
     private MessageRenderer() {}
 
@@ -29,7 +33,7 @@ public class MessageRenderer {
     }
 
     public static int groupHeight(List<MessageModel> group, int panelWidth, boolean isGroupChat,
-            Map<Long, MessageModel> msgById) {
+            Map<Long, MessageModel> msgById, boolean imagesEnabled) {
         boolean isOutgoing = group.get(0).isOutgoing();
         int wrapWidth = textWrapWidth(isOutgoing, panelWidth);
         int rows = 2; // top margin row + name/timestamp row
@@ -41,7 +45,11 @@ public class MessageRenderer {
                 rows++; // gap row before reply block
                 rows++; // reply header row
             }
-            rows += TextRenderer.wrap(m.text().isEmpty() ? " " : m.text(), wrapWidth).size();
+            if (imagesEnabled && m.stickerFileId() > 0) {
+                rows += STICKER_ROWS;
+            } else {
+                rows += TextRenderer.wrap(m.text().isEmpty() ? " " : m.text(), wrapWidth).size();
+            }
         }
         rows++; // padding row
         return rows;
@@ -49,7 +57,8 @@ public class MessageRenderer {
 
     public static void renderGroup(TextGraphics g, List<MessageModel> group,
             int panelX, int panelY, int panelWidth, boolean isGroupChat, int selectedPos,
-            int clipTop, int clipBottom, Map<Long, MessageModel> msgById) {
+            int clipTop, int clipBottom, Map<Long, MessageModel> msgById,
+            boolean imagesEnabled, List<StickerPlacement> placements) {
         MessageModel first = group.get(0);
         boolean isOutgoing = first.isOutgoing();
 
@@ -119,13 +128,39 @@ public class MessageRenderer {
             boolean isPlainText = "messageText".equals(m.contentType())
                     || "unknown".equals(m.contentType());
             TextColor textFg = isPlainText ? CatppuccinMocha.TEXT : CatppuccinMocha.OVERLAY1;
-            for (String line : lines) {
-                if (row >= clipTop && row <= clipBottom) {
-                    fillRow(g, msgBg, panelX, row, panelWidth);
-                    g.setForegroundColor(textFg);
-                    g.putString(panelX + 1, row, isOutgoing ? "❯ " + line : line);
+            if (imagesEnabled && m.stickerFileId() > 0) {
+                // inline sticker: reserve STICKER_ROWS blank rows (image composites over them);
+                // show the sticker emoji on the first row as a pre-load placeholder
+                int imgStartRow = row;
+                for (int i = 0; i < STICKER_ROWS; i++) {
+                    if (row >= clipTop && row <= clipBottom) {
+                        fillRow(g, msgBg, panelX, row, panelWidth);
+                        if (i == 0 && !m.stickerEmoji().isEmpty()) {
+                            g.setForegroundColor(CatppuccinMocha.OVERLAY1);
+                            g.putString(panelX + 1, row, m.stickerEmoji());
+                        }
+                    }
+                    row++;
                 }
-                row++;
+                int imgCol = panelX + 1 + (isOutgoing ? 2 : 0);
+                // Only place the image when the whole block sits inside the messages area;
+                // otherwise a partially scrolled sticker would spill over the tab/status bar
+                // (Kitty does not clip images to an arbitrary screen region).
+                if (placements != null
+                        && imgStartRow >= clipTop
+                        && imgStartRow + STICKER_ROWS - 1 <= clipBottom) {
+                    placements.add(new StickerPlacement(imgCol, imgStartRow,
+                            STICKER_ROWS, m.stickerFileId()));
+                }
+            } else {
+                for (String line : lines) {
+                    if (row >= clipTop && row <= clipBottom) {
+                        fillRow(g, msgBg, panelX, row, panelWidth);
+                        g.setForegroundColor(textFg);
+                        g.putString(panelX + 1, row, isOutgoing ? "❯ " + line : line);
+                    }
+                    row++;
+                }
             }
             msgIdx++;
         }

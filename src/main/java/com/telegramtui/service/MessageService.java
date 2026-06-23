@@ -281,7 +281,8 @@ public class MessageService {
                     msgs.set(i, new MessageModel(old.id(), old.chatId(), old.senderId(),
                             old.senderName(), newText, old.contentType(),
                             old.fileId(), old.localFilePath(), old.forwardedFrom(), old.urls(),
-                            old.timestamp(), old.isOutgoing(), true, old.replyToMessageId()));
+                            old.timestamp(), old.isOutgoing(), true, old.replyToMessageId(),
+                            old.stickerFileId(), old.stickerEmoji()));
                     break;
                 }
             }

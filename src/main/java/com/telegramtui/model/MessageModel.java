@@ -16,6 +16,8 @@ public record MessageModel(
 		long timestamp,
 		boolean isOutgoing,
 		boolean isEdited,
-		long replyToMessageId
+		long replyToMessageId,
+		long stickerFileId,
+		String stickerEmoji
 ) {
 }
